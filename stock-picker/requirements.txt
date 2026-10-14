@@ -1,0 +1,8 @@
+yfinance>=0.2.54
+pandas>=2.0
+numpy>=1.24
+requests>=2.31
+streamlit>=1.48
+# 選用：設定 ANTHROPIC_API_KEY 後用 Claude 判讀新聞情緒
+anthropic>=0.40
+pydantic>=2.0
