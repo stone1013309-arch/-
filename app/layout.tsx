@@ -27,6 +27,9 @@ export const viewport: Viewport = {
   maximumScale: 1,
 }
 
+// App 版不需要 Service Worker 與 Vercel Analytics
+const isApp = process.env.NEXT_PUBLIC_BUILD_TARGET === 'app'
+
 const swScript = `if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){})})}`
 
 const themeScript = `(function(){try{var t=localStorage.getItem('fitness-theme');if(t==='dark'){document.documentElement.classList.add('dark');document.documentElement.style.colorScheme='dark';}else{document.documentElement.style.colorScheme='light';}}catch(e){}})();`
@@ -44,13 +47,13 @@ export default function RootLayout({
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-        {process.env.NODE_ENV === 'production' && (
+        {process.env.NODE_ENV === 'production' && !isApp && (
           <script dangerouslySetInnerHTML={{ __html: swScript }} />
         )}
       </head>
       <body className="font-sans antialiased">
         {children}
-        {process.env.NODE_ENV === 'production' && <Analytics />}
+        {process.env.NODE_ENV === 'production' && !isApp && <Analytics />}
       </body>
     </html>
   )

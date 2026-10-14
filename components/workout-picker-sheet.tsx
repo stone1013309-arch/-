@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Camera, Check, Loader2, Moon, Sparkles, Trash2, X } from 'lucide-react'
+import { Camera, Check, Image as ImageIcon, Loader2, Moon, Sparkles, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   WORKOUT_TYPES,
@@ -15,7 +15,8 @@ import {
   type Suggestion,
   type WorkoutType,
 } from '@/lib/workouts'
-import { blobToBase64, compressImage, getPhoto } from '@/lib/photo-store'
+import { blobToBase64, compressImage } from '@/lib/photo-store'
+import { getPhoto } from '@/lib/storage'
 
 interface WorkoutPickerSheetProps {
   date: Date | null
@@ -28,6 +29,9 @@ interface WorkoutPickerSheetProps {
 }
 
 const NOTE_MAX = 500
+
+// App 版沒有自己的伺服器，AI 判斷要打到部署好的網站（例如 https://xxx.vercel.app）
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? ''
 
 const CONFIDENCE_LABEL: Record<AiJudgement['confidence'], string> = {
   high: '把握高',
@@ -53,6 +57,7 @@ export function WorkoutPickerSheet({
   const [judging, setJudging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
 
   // 打開面板時載入該日資料；沒有紀錄的日子：過去的預設休息，今天以後預選循環建議的部位
   useEffect(() => {
@@ -126,6 +131,7 @@ export function WorkoutPickerSheet({
     setPhotoChanged(true)
     setAi(undefined)
     if (fileRef.current) fileRef.current.value = ''
+    if (cameraRef.current) cameraRef.current.value = ''
   }
 
   const judge = async () => {
@@ -133,7 +139,7 @@ export function WorkoutPickerSheet({
     setJudging(true)
     setError(null)
     try {
-      const res = await fetch('/api/judge', {
+      const res = await fetch(`${API_BASE}/api/judge`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -149,7 +155,9 @@ export function WorkoutPickerSheet({
       if (!res.ok) throw new Error(data.error ?? 'AI 判斷失敗')
       setAi(data as AiJudgement)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'AI 判斷失敗')
+      setError(
+        e instanceof TypeError ? '連不到 AI 伺服器，請確認網路' : e instanceof Error ? e.message : 'AI 判斷失敗',
+      )
     } finally {
       setJudging(false)
     }
@@ -300,17 +308,32 @@ export function WorkoutPickerSheet({
             className="hidden"
             onChange={(e) => handleFile(e.target.files?.[0])}
           />
+          <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => handleFile(e.target.files?.[0])}
+          />
           {photoUrl ? (
             <div className="relative overflow-hidden rounded-xl border border-border">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={photoUrl} alt="今日照片" className="max-h-72 w-full object-cover" />
               <div className="absolute right-2 top-2 flex gap-2">
                 <button
-                  onClick={() => fileRef.current?.click()}
-                  aria-label="更換照片"
+                  onClick={() => cameraRef.current?.click()}
+                  aria-label="重新拍照"
                   className="rounded-full bg-black/60 p-2 text-white"
                 >
                   <Camera className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  aria-label="從相簿更換"
+                  className="rounded-full bg-black/60 p-2 text-white"
+                >
+                  <ImageIcon className="h-4 w-4" />
                 </button>
                 <button
                   onClick={removePhoto}
@@ -322,13 +345,22 @@ export function WorkoutPickerSheet({
               </div>
             </div>
           ) : (
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="flex h-20 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border text-sm text-muted-foreground transition-colors hover:bg-accent"
-            >
-              <Camera className="h-5 w-5" />
-              拍照或選擇照片
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => cameraRef.current?.click()}
+                className="flex h-20 items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border text-sm text-muted-foreground transition-colors hover:bg-accent"
+              >
+                <Camera className="h-5 w-5" />
+                拍照
+              </button>
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="flex h-20 items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border text-sm text-muted-foreground transition-colors hover:bg-accent"
+              >
+                <ImageIcon className="h-5 w-5" />
+                從相簿選
+              </button>
+            </div>
           )}
         </div>
 

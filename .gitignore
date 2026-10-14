@@ -15,3 +15,6 @@ node_modules
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts
+
+# Next.js 靜態輸出（Capacitor 用）
+/out/

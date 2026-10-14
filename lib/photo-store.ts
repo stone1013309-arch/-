@@ -1,4 +1,4 @@
-// 照片存在瀏覽器的 IndexedDB（localStorage 只有約 5MB，放不下照片）
+// 網頁版：照片存在瀏覽器的 IndexedDB（localStorage 只有約 5MB，放不下照片）
 // key 為日期 'YYYY-MM-DD'，value 為壓縮後的 JPEG Blob
 
 const DB_NAME = 'fitness-photos'
@@ -30,15 +30,15 @@ async function run<T>(
   }
 }
 
-export function getPhoto(key: string): Promise<Blob | undefined> {
+export function idbGetPhoto(key: string): Promise<Blob | undefined> {
   return run('readonly', (s) => s.get(key))
 }
 
-export function putPhoto(key: string, blob: Blob): Promise<void> {
+export function idbPutPhoto(key: string, blob: Blob): Promise<void> {
   return run('readwrite', (s) => s.put(blob, key))
 }
 
-export function deletePhoto(key: string): Promise<void> {
+export function idbDeletePhoto(key: string): Promise<void> {
   return run('readwrite', (s) => s.delete(key))
 }
 

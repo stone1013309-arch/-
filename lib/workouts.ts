@@ -49,7 +49,7 @@ export type WorkoutLog = Record<string, DayEntry>
 const STORAGE_KEY = 'fitness-workout-log-v2'
 const LEGACY_KEY = 'fitness-workout-log-v1'
 
-function normalize(parsed: unknown): WorkoutLog {
+export function normalize(parsed: unknown): WorkoutLog {
   if (!parsed || typeof parsed !== 'object') return {}
   const out: WorkoutLog = {}
   for (const [key, val] of Object.entries(parsed as Record<string, unknown>)) {
@@ -70,7 +70,7 @@ function normalize(parsed: unknown): WorkoutLog {
   return out
 }
 
-export function loadLog(): WorkoutLog {
+export function loadLocalLog(): WorkoutLog {
   if (typeof window === 'undefined') return {}
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
@@ -84,7 +84,7 @@ export function loadLog(): WorkoutLog {
   }
 }
 
-export function saveLog(log: WorkoutLog) {
+export function saveLocalLog(log: WorkoutLog) {
   if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(log))

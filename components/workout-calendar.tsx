@@ -10,8 +10,6 @@ import {
   WEEKDAYS,
   MONTH_NAMES,
   buildMonthGrid,
-  loadLog,
-  saveLog,
   toKey,
   isSameDay,
   isRestDay,
@@ -20,7 +18,7 @@ import {
   type DayEntry,
   type WorkoutLog,
 } from '@/lib/workouts'
-import { deletePhoto, putPhoto } from '@/lib/photo-store'
+import { deletePhoto, isNativeApp, loadLog, putPhoto, saveLog } from '@/lib/storage'
 import { exportBackup, importBackup, requestPersistentStorage } from '@/lib/backup'
 
 const THEME_KEY = 'fitness-theme'
@@ -64,9 +62,13 @@ export function WorkoutCalendar() {
   const [backupMsg, setBackupMsg] = useState<string | null>(null)
   const importRef = useRef<HTMLInputElement>(null)
 
+  const [saveError, setSaveError] = useState<string | null>(null)
+
   useEffect(() => {
-    setLog(loadLog())
-    setMounted(true)
+    loadLog()
+      .then(setLog)
+      .catch(() => setSaveError('讀取紀錄失敗'))
+      .finally(() => setMounted(true))
     requestPersistentStorage().then(setPersisted)
   }, [])
 
@@ -85,7 +87,7 @@ export function WorkoutCalendar() {
     if (!window.confirm('還原會取代目前所有紀錄與照片，確定嗎？')) return
     try {
       const days = await importBackup(file)
-      setLog(loadLog())
+      setLog(await loadLog())
       setBackupMsg(`已還原 ${days} 天的紀錄`)
     } catch (e) {
       setBackupMsg(e instanceof Error ? e.message : '還原失敗')
@@ -116,20 +118,23 @@ export function WorkoutCalendar() {
       if (photo) await putPhoto(key, photo)
       else if (photo === null || !entry) await deletePhoto(key)
     } catch {
-      // IndexedDB 不可用（例如部分隱私模式），照片不保存
+      // 照片存不進去（例如瀏覽器隱私模式），只保存文字紀錄
       if (saved) saved = { ...saved, hasPhoto: false }
     }
-    setLog((prev) => {
-      const next = { ...prev }
-      if (!saved) {
-        delete next[key] // 清空紀錄
-      } else {
-        next[key] = saved
-      }
-      saveLog(next)
-      return next
-    })
+    const next = { ...log }
+    if (!saved) {
+      delete next[key] // 清空紀錄
+    } else {
+      next[key] = saved
+    }
+    setLog(next)
     setActiveDate(null)
+    try {
+      await saveLog(next)
+      setSaveError(null)
+    } catch {
+      setSaveError('儲存失敗，請再試一次')
+    }
   }
 
   const todaySuggestion = useMemo(() => (mounted ? suggestFor(log, today) : null), [log, today, mounted])
@@ -371,8 +376,10 @@ export function WorkoutCalendar() {
       <div className="mt-6 rounded-2xl border border-border bg-card p-4">
         <p className="text-sm font-semibold">資料保存</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          紀錄與照片都存在這支手機上，不會上傳。
-          {persisted === true && '已開啟持久保存，系統不會自動清除。'}
+          {mounted && isNativeApp()
+            ? '紀錄與照片以檔案存在手機內存（App 資料夾），不會上傳；解除安裝 App 前記得先備份。'
+            : '紀錄與照片都存在這支手機上，不會上傳。'}
+          {persisted === true && mounted && !isNativeApp() && '已開啟持久保存，系統不會自動清除。'}
           {persisted === false && '建議把網頁「加到主畫面」，並定期備份。'}
         </p>
         <div className="mt-3 grid grid-cols-2 gap-2">
@@ -399,6 +406,7 @@ export function WorkoutCalendar() {
           onChange={(e) => handleImport(e.target.files?.[0])}
         />
         {backupMsg && <p className="mt-2 text-xs text-muted-foreground">{backupMsg}</p>}
+        {saveError && <p className="mt-2 text-xs text-destructive">{saveError}</p>}
       </div>
 
       <WorkoutPickerSheet

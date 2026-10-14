@@ -40,17 +40,37 @@ summary：一句話說明你的判斷依據。tips：一到兩句具體建議（
 
 const LABEL = { legs: '腿', pull: '拉', push: '推', full: '全身' } as const
 
+// 允許手機 App（Capacitor WebView）跨來源呼叫
+const APP_ORIGINS = new Set(['capacitor://localhost', 'https://localhost', 'http://localhost'])
+
+function corsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin')
+  if (!origin || !APP_ORIGINS.has(origin)) return {}
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '86400',
+    Vary: 'Origin',
+  }
+}
+
+export function OPTIONS(req: Request) {
+  return new Response(null, { status: 204, headers: corsHeaders(req) })
+}
+
 export async function POST(req: Request) {
+  const headers = corsHeaders(req)
   if (!process.env.ANTHROPIC_API_KEY) {
     return Response.json(
       { error: '伺服器尚未設定 ANTHROPIC_API_KEY，無法使用 AI 判斷' },
-      { status: 501 },
+      { status: 501, headers },
     )
   }
 
   const parsed = RequestSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) {
-    return Response.json({ error: '請求格式錯誤' }, { status: 400 })
+    return Response.json({ error: '請求格式錯誤' }, { status: 400, headers })
   }
   const body = parsed.data
 
@@ -91,16 +111,16 @@ ${body.imageBase64 ? '附上今日照片。' : '沒有附照片，請只依備�
     })
 
     if (response.stop_reason === 'refusal' || !response.parsed_output) {
-      return Response.json({ error: 'AI 無法判斷這張照片，請改用手動選擇' }, { status: 422 })
+      return Response.json({ error: 'AI 無法判斷這張照片，請改用手動選擇' }, { status: 422, headers })
     }
-    return Response.json(response.parsed_output)
+    return Response.json(response.parsed_output, { headers })
   } catch (err) {
     if (err instanceof Anthropic.RateLimitError) {
-      return Response.json({ error: 'AI 使用量過高，請稍後再試' }, { status: 429 })
+      return Response.json({ error: 'AI 使用量過高，請稍後再試' }, { status: 429, headers })
     }
     if (err instanceof Anthropic.APIError) {
       console.error('Claude API error', err.status, err.message)
-      return Response.json({ error: 'AI 判斷失敗，請稍後再試' }, { status: 502 })
+      return Response.json({ error: 'AI 判斷失敗，請稍後再試' }, { status: 502, headers })
     }
     throw err
   }
