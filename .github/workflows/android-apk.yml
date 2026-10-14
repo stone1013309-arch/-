@@ -1,0 +1,45 @@
+# 打包 Android APK：到 GitHub 的 Actions 分頁 → 這個工作流程 → 下載 artifact「fitness-log-apk」
+# AI 判斷要連到部署好的網站：在 repo 的 Settings → Secrets and variables → Actions → Variables
+# 新增 API_BASE，例如 https://your-app.vercel.app
+name: Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 'claude/**']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build web app and sync to Android
+        run: pnpm build:app
+        env:
+          NEXT_PUBLIC_API_BASE: ${{ vars.API_BASE }}
+
+      - name: Build APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fitness-log-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
