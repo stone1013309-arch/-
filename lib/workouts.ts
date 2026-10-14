@@ -39,6 +39,8 @@ export interface DayEntry {
   note: string
   hasPhoto?: boolean
   ai?: AiJudgement
+  // 手動標記為休息日
+  rest?: boolean
 }
 
 // 一整月的紀錄： { 'YYYY-MM-DD': { types: ['push', 'legs'], note: '...' } }
@@ -55,12 +57,13 @@ function normalize(parsed: unknown): WorkoutLog {
       // 舊格式：僅有部位陣列
       out[key] = { types: val as WorkoutType[], note: '' }
     } else if (val && typeof val === 'object') {
-      const v = val as { types?: unknown; note?: unknown; hasPhoto?: unknown; ai?: unknown }
+      const v = val as { types?: unknown; note?: unknown; hasPhoto?: unknown; ai?: unknown; rest?: unknown }
       out[key] = {
         types: Array.isArray(v.types) ? (v.types as WorkoutType[]) : [],
         note: typeof v.note === 'string' ? v.note : '',
         hasPhoto: v.hasPhoto === true,
         ai: v.ai && typeof v.ai === 'object' ? (v.ai as AiJudgement) : undefined,
+        rest: v.rest === true,
       }
     }
   }
@@ -156,12 +159,15 @@ export function isSameDay(a: Date, b: Date): boolean {
   return toKey(a) === toKey(b)
 }
 
-// 是否為今天或過去（用來判斷未訓練的日子是否自動標為休息）
-export function isTodayOrPast(d: Date): boolean {
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate())
-  return target.getTime() <= today.getTime()
+// 是否為今天之前（今天還沒結束，不算休息）
+export function isPast(d: Date): boolean {
+  return toKey(d) < toKey(new Date())
+}
+
+// 休息日：手動標記休息，或是已經過去、卻沒有任何訓練紀錄的日子（隔天自動預設為休息）
+export function isRestDay(entry: DayEntry | undefined, d: Date): boolean {
+  if (entry?.types.length) return false
+  return entry?.rest === true || isPast(d)
 }
 
 export const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']

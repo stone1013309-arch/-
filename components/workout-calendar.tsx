@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Camera, ChevronLeft, ChevronRight, Moon, Sun } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Camera, ChevronLeft, ChevronRight, Download, Moon, Sun, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { WorkoutPickerSheet } from '@/components/workout-picker-sheet'
 import {
@@ -14,13 +14,14 @@ import {
   saveLog,
   toKey,
   isSameDay,
-  isTodayOrPast,
+  isRestDay,
   suggestFor,
   recentHistory,
   type DayEntry,
   type WorkoutLog,
 } from '@/lib/workouts'
 import { deletePhoto, putPhoto } from '@/lib/photo-store'
+import { exportBackup, importBackup, requestPersistentStorage } from '@/lib/backup'
 
 const THEME_KEY = 'fitness-theme'
 
@@ -59,10 +60,39 @@ export function WorkoutCalendar() {
   const [mounted, setMounted] = useState(false)
   const { theme, toggle } = useTheme()
 
+  const [persisted, setPersisted] = useState<boolean | null>(null)
+  const [backupMsg, setBackupMsg] = useState<string | null>(null)
+  const importRef = useRef<HTMLInputElement>(null)
+
   useEffect(() => {
     setLog(loadLog())
     setMounted(true)
+    requestPersistentStorage().then(setPersisted)
   }, [])
+
+  const handleExport = async () => {
+    setBackupMsg(null)
+    try {
+      const how = await exportBackup()
+      setBackupMsg(how === 'shared' ? '已產生備份檔' : '備份檔已下載到手機')
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === 'AbortError')) setBackupMsg('備份失敗')
+    }
+  }
+
+  const handleImport = async (file: File | undefined) => {
+    if (!file) return
+    if (!window.confirm('還原會取代目前所有紀錄與照片，確定嗎？')) return
+    try {
+      const days = await importBackup(file)
+      setLog(loadLog())
+      setBackupMsg(`已還原 ${days} 天的紀錄`)
+    } catch (e) {
+      setBackupMsg(e instanceof Error ? e.message : '還原失敗')
+    } finally {
+      if (importRef.current) importRef.current.value = ''
+    }
+  }
 
   const cells = useMemo(() => buildMonthGrid(view.year, view.month), [view])
 
@@ -113,7 +143,7 @@ export function WorkoutCalendar() {
       const entry = log[c.key]
       if (entry?.types?.length) {
         entry.types.forEach((t) => (counts[t] += 1))
-      } else if (isTodayOrPast(c.date)) {
+      } else if (isRestDay(entry, c.date)) {
         counts.rest += 1
       }
     }
@@ -157,20 +187,28 @@ export function WorkoutCalendar() {
           onClick={() => setActiveDate(today)}
           className="mb-5 flex w-full items-center gap-3 rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:bg-accent"
         >
-          <span
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-xl font-bold"
-            style={{
-              backgroundColor: `var(--${TYPE_MAP[todaySuggestion.type].color})`,
-              color: `var(--${TYPE_MAP[todaySuggestion.type].fg})`,
-            }}
-          >
-            {TYPE_MAP[todaySuggestion.type].short}
-          </span>
+          {todayEntry?.rest && !todayEntry.types.length ? (
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+              <Moon className="h-6 w-6" />
+            </span>
+          ) : (
+            <span
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-xl font-bold"
+              style={{
+                backgroundColor: `var(--${TYPE_MAP[todaySuggestion.type].color})`,
+                color: `var(--${TYPE_MAP[todaySuggestion.type].fg})`,
+              }}
+            >
+              {TYPE_MAP[todaySuggestion.type].short}
+            </span>
+          )}
           <span className="min-w-0">
             <span className="block text-sm font-semibold">
               {todayEntry?.types.length
                 ? `今天已記錄：${todayEntry.types.map((t) => TYPE_MAP[t].label).join('＋')}`
-                : `今天該練：${TYPE_MAP[todaySuggestion.type].label}`}
+                : todayEntry?.rest
+                  ? '今天休息'
+                  : `今天該練：${TYPE_MAP[todaySuggestion.type].label}`}
             </span>
             <span className="mt-0.5 block text-xs text-muted-foreground">{todaySuggestion.reason}</span>
           </span>
@@ -223,7 +261,7 @@ export function WorkoutCalendar() {
           const hasNote = mounted && !!entry?.note
           const hasPhoto = mounted && !!entry?.hasPhoto
           const isToday = isSameDay(c.date, today)
-          const isRest = mounted && c.inMonth && !hasWorkout && isTodayOrPast(c.date)
+          const isRest = mounted && c.inMonth && isRestDay(entry, c.date)
 
           return (
             <button
@@ -327,6 +365,40 @@ export function WorkoutCalendar() {
             <span className="text-[11px] text-muted-foreground">休息</span>
           </div>
         </div>
+      </div>
+
+      {/* 資料保存 */}
+      <div className="mt-6 rounded-2xl border border-border bg-card p-4">
+        <p className="text-sm font-semibold">資料保存</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          紀錄與照片都存在這支手機上，不會上傳。
+          {persisted === true && '已開啟持久保存，系統不會自動清除。'}
+          {persisted === false && '建議把網頁「加到主畫面」，並定期備份。'}
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            onClick={handleExport}
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium transition-colors hover:bg-accent"
+          >
+            <Download className="h-4 w-4" />
+            備份到手機
+          </button>
+          <button
+            onClick={() => importRef.current?.click()}
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium transition-colors hover:bg-accent"
+          >
+            <Upload className="h-4 w-4" />
+            從備份還原
+          </button>
+        </div>
+        <input
+          ref={importRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(e) => handleImport(e.target.files?.[0])}
+        />
+        {backupMsg && <p className="mt-2 text-xs text-muted-foreground">{backupMsg}</p>}
       </div>
 
       <WorkoutPickerSheet

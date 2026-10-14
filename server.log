@@ -1,0 +1,15 @@
+
+> my-project@0.1.0 start /home/user/-
+> next start -p 3123
+
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3123
+    at <unknown> (Error: listen EADDRINUSE: address already in use 0.0.0.0:3123)
+    at new Promise (<anonymous>) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3123
+}
+ ELIFECYCLE  Command failed with exit code 1.

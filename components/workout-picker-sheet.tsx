@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Camera, Check, Loader2, Sparkles, Trash2, X } from 'lucide-react'
+import { Camera, Check, Loader2, Moon, Sparkles, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   WORKOUT_TYPES,
@@ -9,6 +9,7 @@ import {
   WEEKDAYS,
   MONTH_NAMES,
   toKey,
+  isPast,
   type AiJudgement,
   type DayEntry,
   type Suggestion,
@@ -43,6 +44,7 @@ export function WorkoutPickerSheet({
   onSave,
 }: WorkoutPickerSheetProps) {
   const [selected, setSelected] = useState<WorkoutType[]>([])
+  const [rest, setRest] = useState(false)
   const [text, setText] = useState('')
   const [photo, setPhoto] = useState<Blob | null>(null)
   const [photoChanged, setPhotoChanged] = useState(false)
@@ -52,10 +54,12 @@ export function WorkoutPickerSheet({
   const [error, setError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // 打開面板時載入該日資料；沒有紀錄的日子預選循環建議的部位
+  // 打開面板時載入該日資料；沒有紀錄的日子：過去的預設休息，今天以後預選循環建議的部位
   useEffect(() => {
     if (!date) return
-    setSelected(entry ? entry.types : suggestion ? [suggestion.type] : [])
+    const pastEmpty = !entry && isPast(date)
+    setRest(entry ? !!entry.rest : pastEmpty)
+    setSelected(entry ? entry.types : pastEmpty || !suggestion ? [] : [suggestion.type])
     setText(entry?.note ?? '')
     setAi(entry?.ai)
     setPhoto(null)
@@ -96,7 +100,13 @@ export function WorkoutPickerSheet({
   if (!date) return null
 
   const toggle = (t: WorkoutType) => {
+    setRest(false)
     setSelected((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]))
+  }
+
+  const toggleRest = () => {
+    setRest((r) => !r)
+    setSelected([])
   }
 
   const handleFile = async (file: File | undefined) => {
@@ -148,11 +158,14 @@ export function WorkoutPickerSheet({
   const save = () => {
     const note = text.trim()
     const hasPhoto = !!photo
-    if (selected.length === 0 && note.length === 0 && !hasPhoto) {
+    if (selected.length === 0 && note.length === 0 && !hasPhoto && !rest) {
       onSave(null, null)
       return
     }
-    onSave({ types: selected, note, hasPhoto, ai }, photoChanged ? photo : undefined)
+    onSave(
+      { types: selected, note, hasPhoto, ai, rest: rest && selected.length === 0 },
+      photoChanged ? photo : undefined,
+    )
   }
 
   const dateLabel = `${date.getFullYear()} 年 ${MONTH_NAMES[date.getMonth()]} ${date.getDate()} 日 · 週${WEEKDAYS[date.getDay()]}`
@@ -242,6 +255,21 @@ export function WorkoutPickerSheet({
           })}
         </div>
 
+        <button
+          onClick={toggleRest}
+          aria-pressed={rest}
+          className={cn(
+            'mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl border-2 text-sm font-semibold transition-all',
+            rest
+              ? 'border-muted-foreground/50 bg-muted text-foreground'
+              : 'border-border bg-card text-muted-foreground hover:border-muted-foreground/40',
+          )}
+        >
+          <Moon className="h-4 w-4" />
+          休息
+          {rest && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+        </button>
+
         {/* 今日做了什麼 */}
         <div className="mt-5">
           <div className="mb-2 flex items-center justify-between">
@@ -326,7 +354,10 @@ export function WorkoutPickerSheet({
                 </span>
                 {ai.types.length > 0 && (
                   <button
-                    onClick={() => setSelected(ai.types)}
+                    onClick={() => {
+                      setRest(false)
+                      setSelected(ai.types)
+                    }}
                     className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground"
                   >
                     套用
